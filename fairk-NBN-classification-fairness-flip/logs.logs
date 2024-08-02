@@ -1,0 +1,30 @@
+INFO: 
+data:
+  load_from: data/dutch_cencus_wtarget.csv
+  results_path: results/
+  plot_path: plots/
+  sensitive_attribute:
+    name: Sex
+    protected: female
+  class_attribute:
+    name: class
+    values:
+    - 1
+    - 2
+basic:
+  feature_selection: true
+  split_data:
+    val_data: false
+    resampling_train_set: false
+  split_percent: 0.2
+  neighbors: 5
+  focus_metric: fairness_parity_rate
+  points_removed_from_each_iteration: 100
+experiment_name: fpc_knn5_with_resampling
+
+INFO: worst_feature : household_position, 0.6361231369052629 
+INFO: worst_feature : citizenship, 0.39978840438411734 
+INFO: worst_feature : Marital_status, 0.18708701830092403 
+INFO: 
+Selected Features:
+['age', 'household_size', 'prev_residence_place', 'country_birth', 'edu_level', 'economic_status', 'cur_eco_activity']

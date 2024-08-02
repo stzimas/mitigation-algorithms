@@ -1,0 +1,35 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: none
+  - override hydra/job_logging: none
+data:
+  load_from: "data/dutch_cencus_wtarget.csv"
+  results_path : "results/"
+  plot_path : "plots/"
+  sensitive_attribute :
+    name: 'Sex'
+    protected: 'female'
+  class_attribute :
+    name: 'class'
+    values: [1,2] #1 or 2 / good or bad
+
+
+basic:
+  feature_selection : True
+  split_data:
+    val_data : False
+    resampling_train_set : False
+  split_percent : 0.2
+  neighbors: 5
+  focus_metric : 'fairness_parity_rate'
+  points_removed_from_each_iteration : 100
+
+
+experiment_name: "fpc_knn5_with_resampling"
+
+hydra:
+  output_subdir: /data
+  run:
+    dir: .
+  job_logging:
+    disable_existing_loggers: false
