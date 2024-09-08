@@ -13,6 +13,16 @@ class Evaluate():
         self.fp = 0
         self.tn = 0
         self.fn = 0
+        self.negative_sensitive_class_counter = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if
+                     self.y_sensitive_attribute[i] == 0].count(2)
+
+        self.tp_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] == self.y_actual[i]].count(1)
+        self.fp_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] != self.y_actual[i]].count(1)
+        self.tn_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] == self.y_actual[i]].count(2)
+        self.fn_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] != self.y_actual[i]].count(2)
+
+        self.acc_fair_rate = ((self.tp_sensitive_attr+self.tn_sensitive_attr)/( self.tp_sensitive_attr + self.fp_sensitive_attr + self.fn_sensitive_attr + self.tn_sensitive_attr )) / ( ((self.tp - self.tp_sensitive_attr) +(self.tn - self.tn_sensitive_attr))/(self.tp - self.tp_sensitive_attr + self.fp - self.fp_sensitive_attr + self.fn - self.fn_sensitive_attr +self.tn - self.tn_sensitive_attr))
+
 
         for i in range(len(self.y_pred)):
             if self.y_actual[i] == self.y_pred[i] == 1:
@@ -74,30 +84,23 @@ class Evaluate():
         return tnr
 
     def fairness_parity_rate(self):
-        y_pred_z0 = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 ]
-        y_pred_z1 = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 1 ]
-        y_pred_z0_positive_count = y_pred_z0.count(1)
-        y_pred_z1_positive_count = y_pred_z1.count(1)
-        fairness_parity_rate = y_pred_z0_positive_count / y_pred_z1_positive_count
+        y_pred_z0 = self.tp_sensitive_attr + self.fp_sensitive_attr
+        y_pred_z1 = self.tp - self.tp_sensitive_attr  + self.fp - self.fp_sensitive_attr
+        fairness_parity_rate = y_pred_z0 / y_pred_z1
         return fairness_parity_rate
-    def true_negative_fairness_rate(self):
-        y_pred_z0 = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] == self.y_actual[i] ]
-        y_pred_z1 = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 1 and self.y_pred[i] == self.y_actual[i]]
-        y_pred_z0_negative_count = y_pred_z0.count(2)
-        y_pred_z1_negative_count = y_pred_z1.count(2)
-        if y_pred_z0_negative_count == 0 or y_pred_z1_negative_count == 0:
-            true_negative_fairness_rate = 0
+    def negative_fairness_representation_rate(self):
+        y_pred_z0 = self.fn_sensitive_attr
+        y_pred_z1 = self.fn - self.fn_sensitive_attr
+
+        if self.fn - self.fn_sensitive_attr == 0:
+            negative_fairness_representation_rate = 0
         else:
-            true_negative_fairness_rate = y_pred_z0_negative_count / y_pred_z1_negative_count
-        return true_negative_fairness_rate
+            negative_fairness_representation_rate = y_pred_z0 / y_pred_z1
+        return negative_fairness_representation_rate
     def true_positive_fairness_rate(self):
-        y_pred_z0 = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if
-                     self.y_sensitive_attribute[i] == 0 and self.y_pred[i] == self.y_actual[i]]
-        y_pred_z1 = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if
-                     self.y_sensitive_attribute[i] == 1 and self.y_pred[i] == self.y_actual[i]]
-        y_pred_z0_positive_count = y_pred_z0.count(1)
-        y_pred_z1_positive_count = y_pred_z1.count(1)
-        true_positive_fairness_rate = y_pred_z0_positive_count / y_pred_z1_positive_count
+        y_pred_z0 = self.tp_sensitive_attr
+        y_pred_z1 = self.tp -self.tp_sensitive_attr
+        true_positive_fairness_rate = y_pred_z0 / y_pred_z1
         return true_positive_fairness_rate
 
 

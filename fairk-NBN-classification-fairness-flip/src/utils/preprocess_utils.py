@@ -14,20 +14,17 @@ def split_df(df, split_percent, protected_attribute, val_data=False,resampling_t
             'z0_negative': df[(df['class'] == 2) & (df[protected_attribute] == 0)],
             'z1_negative': df[(df['class'] == 2) & (df[protected_attribute] == 1)]
         }
+    def get_samples(df,split_percent):
+        n_samples_per_group = int(len(df) * split_percent / 4)
+        groups = generate_groups(df)
+        test_samples = []
+        for group_name, group_df in groups.items():
+            sampled_group = group_df.sample(n=n_samples_per_group, random_state=42)
+            test_samples.append(sampled_group)
+        test_set = pd.concat(test_samples)
+        return test_set
 
-    n_samples_per_group = int(len(df) * split_percent / 4)
-    groups = generate_groups(df)
-    '''
-    for group_name, group_df in groups.items():
-        print(f"{group_name}: {len(group_df)} samples")
-        '''
-    # Sample from each group
-    test_samples = []
-    for group_name, group_df in groups.items():
-        sampled_group = group_df.sample(n=n_samples_per_group, random_state=42)
-        test_samples.append(sampled_group)
-    test_set = pd.concat(test_samples)
-
+    test_set = get_samples(df, split_percent)
 
     train_set = df.drop(test_set.index)
     test_set = test_set.reset_index(drop=True).sample(frac=1, random_state=42).reset_index(drop=True)
@@ -61,10 +58,13 @@ def split_df(df, split_percent, protected_attribute, val_data=False,resampling_t
 
 
     if val_data:
-        val_set, test_set = train_test_split(df, test_size=0.5, random_state=42)
+        val_set = get_samples(test_set, 0.5)
+        test_set = test_set.drop(val_set.index)
+        test_set = test_set.reset_index(drop=True).sample(frac=1, random_state=42).reset_index(drop=True)
+        val_set = val_set.reset_index(drop=True).sample(frac=1, random_state=42).reset_index(drop=True)
         return train_set, val_set, test_set
     else:
-        return train_set, test_set
+        return train_set,None, test_set.reset_index(drop=True)
 
 
 def treat_categorical_data():
@@ -135,6 +135,8 @@ def backward_regression(df,sensitive_attribute, threshold_out=0.01):
             break
     selected_features.append(included)
     logging.info(f"\nSelected Features:\n{selected_features[0]}")
+    if sensitive_attribute  in selected_features[0]:
+        selected_features[0].remove(sensitive_attribute)
     x_train = df[[sensitive_attribute]+selected_features[0]]
     y_train = df.iloc[:, -1]
     train_data = pd.concat([x_train, y_train], axis=1)

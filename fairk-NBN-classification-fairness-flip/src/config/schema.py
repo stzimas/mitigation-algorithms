@@ -8,10 +8,12 @@ from hydra.core.config_store import ConfigStore
 @dataclass
 class BasicConfig:
     neighbors: int
+
     distance: str
     split_data: dict
     split_percent: float
     feature_selection: bool
+    exclude_sensitive_attribute: bool
     focus_metric: str
 
 @dataclass
