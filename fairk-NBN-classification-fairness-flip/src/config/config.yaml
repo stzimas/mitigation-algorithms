@@ -15,7 +15,7 @@ data:
 
 
 basic:
-  feature_selection : False
+  feature_selection : True
   exclude_sensitive_attribute : False
   split_data:
     val_data : True
@@ -26,7 +26,7 @@ basic:
   points_removed_from_each_iteration : 100
 
 
-experiment_name: "name"
+experiment_name: "most_common_label_flip_1"
 
 hydra:
   output_subdir: /data

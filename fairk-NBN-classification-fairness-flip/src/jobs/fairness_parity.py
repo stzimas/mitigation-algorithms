@@ -11,10 +11,13 @@ from matplotlib import pyplot as plt
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
+from statsmodels.graphics.tukeyplot import results
+
 from src.dataloader.dataloader import DataLoader
 from src.config.schema import Config
 from src.jobs.evaluate import Evaluate
-from src.utils.general_utils import get_neighbor_statistics, get_negative_protected_values
+from src.utils.general_utils import get_neighbor_statistics, get_negative_protected_values, check_column_value, \
+    group_sublists_by_shared_elements
 from src.utils.preprocess_utils import encode_dataframe, split_df, get_xy, backward_regression
 
 
@@ -77,7 +80,9 @@ class FairnessParity:
 
 
     def _train(self, x_train, y_train, sns=None):
-        self.model = KNeighborsClassifier(n_neighbors=self.config.basic.neighbors)
+        cov_matrix = np.cov(x_train.T)
+        inv_cov_matrix = np.linalg.inv(cov_matrix)
+        self.model = KNeighborsClassifier(n_neighbors=self.config.basic.neighbors,metric='l2')
         self.model.fit(x_train, y_train[self.class_attribute])
 
     def _eval(self, x_test, y_test, y_sensitive_attr):
@@ -96,12 +101,27 @@ class FairnessParity:
 
         return eval_results
 
-    def _get_neighbors(self, df):
-        _, indices = self.model.kneighbors(df, n_neighbors=1)
-        indices = [item for sublist in indices.tolist() for item in sublist]  # TODO: for multiple neighbors
-        return indices
 
-    def _run_fairness_baseline(self, x_train, x_test, y_train, y_test, y_sensitive_attr):
+    def _get_negative_classified_protected_class_subset(self,df,y_train,n_neighbors=384):
+        distances, indices = self.model.kneighbors(df, n_neighbors=n_neighbors,return_distance=True)
+        negative_neighbors = []
+        for sublist in indices:
+            new_sublist = []
+            for i,element in enumerate(sublist):
+                value = check_column_value(y_train,element,self.config.data.class_attribute.name)
+                if value == 2:
+                    new_sublist = sublist[:i+1]
+
+                else:
+                    # If no condition was met, keep the full sublist
+                    new_sublist = sublist[:i]
+                    break
+
+            negative_neighbors.append(new_sublist)
+
+        return negative_neighbors
+
+    def attempt0(self, x_train, x_test, y_train, y_test, y_sensitive_attr):
         results_df = pd.DataFrame()
         iteration = 0
         eval_results = {self.config.basic.focus_metric: 0}
@@ -157,7 +177,7 @@ class FairnessParity:
         plt.tight_layout(pad=0.5)
         plt.savefig(self.local_dir_plt + 'evaluation_metrics_plot.png', dpi=1200, bbox_inches='tight', pad_inches=0.04)
 
-    def _run_fairness_parity_coverage(self, x_train, x_val, x_test, y_train, y_val, y_test, train_sensitive_attr,
+    def attempt1(self, x_train, x_val, x_test, y_train, y_val, y_test, train_sensitive_attr,
                                       y_val_sensitive_attr, y_test_sensitive_attr):
         results_df = pd.DataFrame()
         iteration = 0
@@ -195,18 +215,83 @@ class FairnessParity:
         logging.info(test_results)
         logging.info("total points removed from train set:"+str(results_df['points_dropped_from_train'].sum()))
         results_df.to_csv(self.local_dir_res + 'eval_results_coverage.csv', index=False)
+
+        return results_df
+
+    def most_common_flip(self, y_val=None, x_val=None, y_val_sensitive_attr=None, y_train=None, x_train=None,
+                         number_sensitive_attr_predicted_positive=None, number_dom_attr_predicted_positive=None,
+                         y_test=None):
+        num_flips = 0
+        results_df = pd.DataFrame()
+        number_sensitive_attr_predicted_positive_prev_interation = number_sensitive_attr_predicted_positive
+        max_length = self.model.n_samples_fit_
+        while number_sensitive_attr_predicted_positive != number_dom_attr_predicted_positive:
+            results_dict = dict()
+            t0 = get_negative_protected_values(y_val, x_val, y_val_sensitive_attr, self.class_attribute)
+            negative_clasified_protected_class_subset = self._get_negative_classified_protected_class_subset(t0, y_train,n_neighbors =max_length)
+
+            max_length = max(len(sublist) for sublist in negative_clasified_protected_class_subset)
+            if max_length < 15:
+                print("hi")
+                test = self._get_negative_classified_protected_class_subset(t0, y_train, n_neighbors=self.model.n_samples_fit_)
+                pass
+            print(f"max_length: {max_length}")
+            index_0_elements =  [sublist[0] for sublist in negative_clasified_protected_class_subset if (len(sublist)>0)]
+            counter = Counter(index_0_elements)
+            most_common_index, count = counter.most_common(1)[0]
+            results_dict['Index_Flipped'] = most_common_index
+            results_dict['num_pneg_neighbors'] = count
+            print(f"most_common_index: {most_common_index}")
+            print(f"count: {count}")
+            y_train.loc[most_common_index,self.class_attribute] = 1 #flip label
+            self._train(x_train, y_train)
+            y_pred_val = self.model.predict(x_val)
+            print(f"positive_t0: {(self.model.predict(t0) == 1).sum()}")
+            eval = Evaluate(y_actual=y_val, y_pred=y_pred_val, y_sensitive_attribute=y_val_sensitive_attr,
+                            class_attribute=self.class_attribute)
+
+            number_sensitive_attr_predicted_positive = eval.number_sensitive_attr_predicted_positive
+            number_pneg_positive = eval.number_sensitive_attr_predicted_positive - number_sensitive_attr_predicted_positive_prev_interation
+            number_sensitive_attr_predicted_positive_prev_interation = eval.number_sensitive_attr_predicted_positive
+            results_dict['pnegs_flipped'] = number_pneg_positive
+
+            number_dom_attr_predicted_positive = eval.number_dom_attr_predicted_positive
+            results_dict['number_sensitive_attr_predicted_positive'] = number_sensitive_attr_predicted_positive
+            results_dict['number_dom_attr_predicted_positive'] = number_dom_attr_predicted_positive
+            num_flips += 1
+            results_dict['num_flips'] = num_flips
+            results_df = results_df._append(results_dict, ignore_index=True)
+
+            number_sensitive_attr_predicted_negative = eval.number_sensitive_attr_predicted_negative
+            number_dom_attr_predicted_negative = eval.number_dom_attr_predicted_negative
+
+            print(f"number_sensitive_attr_predicted_positive: {number_sensitive_attr_predicted_positive}")
+            print(f"number_sensitive_attr_predicted_negative: {number_sensitive_attr_predicted_negative}")
+            print(f"number_dom_attr_predicted_positive: {number_dom_attr_predicted_positive}")
+            print(f"number_dom_attr_predicted_negative: {number_dom_attr_predicted_negative}")
+            if all(len(sublist) == 0 for sublist in negative_clasified_protected_class_subset):
+                break
+
+        results_df.to_csv(self.local_dir_res + 'most_common_flip_results.csv', index=False)
         return results_df
 
     def run_fairness_par(self):
         dataloader = DataLoader()
         df = dataloader.load_data(config=self.config)
 
-        x_train, x_val, x_test, y_train, y_val, y_test, train_sensitive_attr, y_val_sensitive_attr, y_test_sensitive_attr = self._preprocess(
+        x_train, x_val, x_test, y_train, y_val, y_test, x_train_sensitive_attr, y_val_sensitive_attr, y_test_sensitive_attr = self._preprocess(
             df)
         self._train(x_train, y_train)
-        results = self._eval(x_val, y_val, y_val_sensitive_attr)
-        results_df = self._run_fairness_parity_coverage(x_train, x_val, x_test, y_train, y_val, y_test,
-                                                        train_sensitive_attr, y_val_sensitive_attr,
-                                                        y_test_sensitive_attr)
+        y_pred_val = self.model.predict(x_val)
 
-        self.coverage_visualization(results_df, metric=self.config.basic.focus_metric)
+        eval = Evaluate(y_actual=y_val, y_pred=y_pred_val, y_sensitive_attribute=y_val_sensitive_attr,
+                        class_attribute=self.class_attribute)
+        number_sensitive_attr_predicted_positive = eval.number_sensitive_attr_predicted_positive
+        number_dom_attr_predicted_positive = eval.number_dom_attr_predicted_positive
+        results = self.most_common_flip( y_val, x_val, y_val_sensitive_attr, y_train, x_train,
+                         number_sensitive_attr_predicted_positive, number_dom_attr_predicted_positive,
+                         y_test)
+
+
+
+        #self.coverage_visualization(results_df, metric=self.config.basic.focus_metric)

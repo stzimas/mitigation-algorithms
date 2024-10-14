@@ -21,6 +21,13 @@ class Evaluate():
         self.tn_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] == self.y_actual[i]].count(2)
         self.fn_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] != self.y_actual[i]].count(2)
 
+        self.number_sensitive_attr_predicted_positive = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 ].count(1)
+        self.number_sensitive_attr_predicted_negative = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 ].count(2)
+
+        self.number_dom_attr_predicted_positive = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 1 ].count(1)
+        self.number_dom_attr_predicted_negative = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 1 ].count(2)
+
+
         self.acc_fair_rate = ((self.tp_sensitive_attr+self.tn_sensitive_attr)/( self.tp_sensitive_attr + self.fp_sensitive_attr + self.fn_sensitive_attr + self.tn_sensitive_attr )) / ( ((self.tp - self.tp_sensitive_attr) +(self.tn - self.tn_sensitive_attr))/(self.tp - self.tp_sensitive_attr + self.fp - self.fp_sensitive_attr + self.fn - self.fn_sensitive_attr +self.tn - self.tn_sensitive_attr))
 
 
