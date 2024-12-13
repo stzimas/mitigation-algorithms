@@ -7,6 +7,7 @@ from src.utils.general_utils import get_negative_protected_values
 class Evaluate():
 
     def  __init__(self, y_pred=None, y_actual=None,y_sensitive_attribute=None,class_attribute= None):
+        #TODO: finish the t0 logic see if is needed here
         self.y_pred = y_pred
         self.y_actual = y_actual[class_attribute].tolist()
         self.y_sensitive_attribute = y_sensitive_attribute

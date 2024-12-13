@@ -7,12 +7,9 @@ import numpy as np
 import pandas as pd
 import omegaconf
 import sys
-from matplotlib import pyplot as plt
-from numpy.core.numeric import indices
-from scipy.spatial import Voronoi, voronoi_plot_2d
+
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.preprocessing import StandardScaler
-from statsmodels.graphics.tukeyplot import results
+
 
 from src.dataloader.dataloader import DataLoader
 from src.config.schema import Config
@@ -184,125 +181,7 @@ class FairnessParity:
             negative_neighbors.append(new_sublist)
         return negative_neighbors
 
-    def most_common_flip(self,
-                         number_sensitive_attr_predicted_positive=None, number_dom_attr_predicted_positive=None,
-                         y_test=None):
-        num_flips = 0
-        results_df = pd.DataFrame()
-        number_sensitive_attr_predicted_positive_prev_interation = number_sensitive_attr_predicted_positive
-        max_length = self.model.n_samples_fit_
-        while number_sensitive_attr_predicted_positive != number_dom_attr_predicted_positive:
-            results_dict = dict()
-            pred_val = self.model.predict(self.x_val)
-            self.t0 = get_negative_protected_values(pred_val, self.x_val, self.y_val_sensitive_attr,
-                                                    self.class_attribute)
-            negative_clasified_protected_class_subset = self._get_negative_classified_protected_class_subset(self.t0,n_neighbors =max_length)
-
-            max_length = max(len(sublist) for sublist in negative_clasified_protected_class_subset)
-            if max_length < 15:
-                pass
-            print(f"max_length: {max_length}")
-            index_0_elements =  [sublist[0] for sublist in negative_clasified_protected_class_subset if (len(sublist)>0)]
-            counter = Counter(index_0_elements)
-            most_common_index, count = counter.most_common(1)[0]
-            results_dict['Index_Flipped'] = most_common_index
-            results_dict['num_pneg_neighbors'] = count
-            print(f"most_common_index: {most_common_index}")
-            print(f"count: {count}")
-            self.y_train.loc[most_common_index,self.class_attribute] = 1 #flip label
-            self._train(self.x_train, self.y_train)
-            y_pred_val = self.model.predict(self.x_val)
-            pos_t0 = (self.model.predict(self.t0) == 1).sum()
-            print(f"positive_t0: {pos_t0}")
-            eval = Evaluate(y_actual=self.y_val, y_pred=y_pred_val, y_sensitive_attribute=self.y_val_sensitive_attr,
-                            class_attribute=self.class_attribute)
-            results_dict['pos_predicted_t0'] = pos_t0
-            number_sensitive_attr_predicted_positive = eval.number_sensitive_attr_predicted_positive
-            number_pneg_positive = eval.number_sensitive_attr_predicted_positive - number_sensitive_attr_predicted_positive_prev_interation
-            number_sensitive_attr_predicted_positive_prev_interation = eval.number_sensitive_attr_predicted_positive
-            results_dict['pnegs_flipped'] = number_pneg_positive
-
-            number_dom_attr_predicted_positive = eval.number_dom_attr_predicted_positive
-            results_dict['number_sensitive_attr_predicted_positive'] = number_sensitive_attr_predicted_positive
-            results_dict['number_dom_attr_predicted_positive'] = number_dom_attr_predicted_positive
-            num_flips += 1
-            results_dict['num_flips'] = num_flips
-            results_df = results_df._append(results_dict, ignore_index=True)
-
-            number_sensitive_attr_predicted_negative = eval.number_sensitive_attr_predicted_negative
-            number_dom_attr_predicted_negative = eval.number_dom_attr_predicted_negative
-
-            print(f"number_sensitive_attr_predicted_positive: {number_sensitive_attr_predicted_positive}")
-            print(f"number_sensitive_attr_predicted_negative: {number_sensitive_attr_predicted_negative}")
-            print(f"number_dom_attr_predicted_positive: {number_dom_attr_predicted_positive}")
-            print(f"number_dom_attr_predicted_negative: {number_dom_attr_predicted_negative}")
-            if all(len(sublist) == 0 for sublist in negative_clasified_protected_class_subset):
-                break
-
-        results_df.to_csv(self.local_dir_res + 'most_common_flip_results.csv', index=False)
-        return results_df
-
-    def len_based_removal(self, y_val=None, x_val=None, y_val_sensitive_attr=None, y_train=None, x_train=None,
-                         number_sensitive_attr_predicted_positive=None, number_dom_attr_predicted_positive=None,
-                         y_train_sensitive_attr=None):
-        num_flips = 0
-        results_df = pd.DataFrame()
-
-        t0 = get_negative_protected_values(y_val, x_val, y_val_sensitive_attr, self.class_attribute)
-        pos_t0 = (self.model.predict(t0) == 1).sum()
-        number_sensitive_attr_predicted_positive_prev_interation = number_sensitive_attr_predicted_positive
-        needed_number_t0_positive =  number_dom_attr_predicted_positive - (number_sensitive_attr_predicted_positive - pos_t0 )
-        max_length = self.model.n_samples_fit_
-
-        num_flips = 0
-        while number_sensitive_attr_predicted_positive != number_dom_attr_predicted_positive or number_sensitive_attr_predicted_positive > number_dom_attr_predicted_positive:
-            negative_clasified_protected_class_subset = self._get_negative_classified_protected_class_subset(t0,y_train,n_neighbors=max_length)
-            max_length = max(len(sublist) for sublist in negative_clasified_protected_class_subset)
-
-            nth_length= nth_length_of_sorted_lists(negative_clasified_protected_class_subset, needed_number_t0_positive)
-            #nth_length=9
-            print('here')
-            for i in range(1,nth_length+1):
-                results_dict = {}
-                fncpcs = filter_sublists_by_length(negative_clasified_protected_class_subset, i)
-                indices = [item for sublist in fncpcs for item in sublist]
-                x_train,y_train,y_train_sensitive_attr = self.remove_indices_from_train(x_train,y_train,y_train_sensitive_attr,indices)
-                self._train(x_train, y_train)
-                indices_dropped =indices_dropped + len(indices)
-                results_dict['indices_dropped'] = indices_dropped
-                y_pred_val = self.model.predict(x_val)
-                pos_t0 = (self.model.predict(t0) == 1).sum()
-                print(f"positive_t0: {pos_t0}")
-                eval = Evaluate(y_actual=y_val, y_pred=y_pred_val, y_sensitive_attribute=y_val_sensitive_attr,
-                                class_attribute=self.class_attribute)
-                results_dict['pos_predicted_t0'] = pos_t0
-                number_sensitive_attr_predicted_positive = eval.number_sensitive_attr_predicted_positive
-                number_pneg_positive = eval.number_sensitive_attr_predicted_positive - number_sensitive_attr_predicted_positive_prev_interation
-                number_sensitive_attr_predicted_positive_prev_interation = eval.number_sensitive_attr_predicted_positive
-                results_dict['pnegs_flipped'] = number_pneg_positive
-
-                number_dom_attr_predicted_positive = eval.number_dom_attr_predicted_positive
-                results_dict['number_sensitive_attr_predicted_positive'] = number_sensitive_attr_predicted_positive
-                results_dict['number_dom_attr_predicted_positive'] = number_dom_attr_predicted_positive
-                num_flips += 1
-                results_dict['num_flips'] = num_flips
-                results_df = results_df._append(results_dict, ignore_index=True)
-
-                number_sensitive_attr_predicted_negative = eval.number_sensitive_attr_predicted_negative
-                number_dom_attr_predicted_negative = eval.number_dom_attr_predicted_negative
-
-                print(f"number_sensitive_attr_predicted_positive: {number_sensitive_attr_predicted_positive}")
-                print(f"number_sensitive_attr_predicted_negative: {number_sensitive_attr_predicted_negative}")
-                print(f"number_dom_attr_predicted_positive: {number_dom_attr_predicted_positive}")
-                print(f"number_dom_attr_predicted_negative: {number_dom_attr_predicted_negative}")
-                if number_sensitive_attr_predicted_positive != number_dom_attr_predicted_positive and i == nth_length+1 :
-                    print("hey")
-                    break
-
-        results_df.to_csv(self.local_dir_res + 'most_common_flip_results.csv', index=False)
-
-        return  results_df
-
+# concise
 
     def label_drop_attempt1(self):
         pred_val = self.model.predict(self.x_val)
@@ -380,6 +259,7 @@ class FairnessParity:
         results_df = pd.DataFrame()
         reverse_index = self.get_reverse_index()
         reverse_index = dict(sorted(reverse_index.items(), key=lambda item: len(item[1]), reverse=True))
+        #TODO : reverse index need to be nore dynamic
         k=0
         results_dict = self._eval(k)
         results_df = results_df._append(results_dict, ignore_index=True)
@@ -404,21 +284,7 @@ class FairnessParity:
 
         self._preprocess(df)
         self._train()
-
-        y_pred_val = self.model.predict(self.x_val)
-        eval = Evaluate(y_actual=self.y_val, y_pred=y_pred_val, y_sensitive_attribute=self.y_val_sensitive_attr,
-                        class_attribute=self.class_attribute)
-        number_sensitive_attr_predicted_positive = eval.number_sensitive_attr_predicted_positive
-        number_dom_attr_predicted_positive = eval.number_dom_attr_predicted_positive
-
-
-        #results = self.label_drop_attempt1()
-
-
-        #self.coverage_visualization(results_df, metric=self.config.basic.focus_metric)
-        #self.lebel_flip_attempt1()
-        results = self.most_common_flip(number_sensitive_attr_predicted_positive, number_dom_attr_predicted_positive)
-        k=1
+        #TODO: logic for experiment results
 
 
 
