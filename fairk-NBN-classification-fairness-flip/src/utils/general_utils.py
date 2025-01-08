@@ -3,7 +3,6 @@ import sys
 
 import numpy as np
 import pandas as pd
-from tomlkit import value
 
 
 def _innit_logger(name="logs.logs"):
@@ -23,12 +22,17 @@ def get_neighbor_statistics(index, df, target_column):
     except KeyError:
         return "The specified index or column does not exist in the DataFrame."
 
-def get_negative_protected_values(y_val,x_val,sensitive_attr_list,class_attribute):
-    mask_y_val = y_val == 2
-    mask_y_val_sensitive_attr = pd.Series(sensitive_attr_list) == 0
+def get_negative_protected_values(y_val,x_val,sensitive_attr_list,class_negative_value,sensitive_class_value):
+    y_val = y_val.to_numpy().ravel() if isinstance(y_val, pd.DataFrame) else y_val
+    if class_negative_value == None:
+        mask_y_val = np.ones_like(y_val, dtype=bool)
+    else:
+        mask_y_val = y_val == class_negative_value
+    mask_y_val_sensitive_attr = pd.Series(sensitive_attr_list) == sensitive_class_value
     combined_mask = mask_y_val & mask_y_val_sensitive_attr
+    t0_ids = x_val[combined_mask].index
     t0 = x_val[combined_mask]
-    return t0
+    return t0 ,t0_ids
 
 
 def check_column_value(df, index, column_name):
@@ -137,4 +141,102 @@ def categorize_and_split_sublists(sublists):
 def nth_length_of_sorted_lists(lists, n):
     sorted_lists = sorted(lists, key=len)
     return len(sorted_lists[n])
+
+class Neighbor:
+    def __init__(self, index, counter_for_flip, sensitive_attribute=None, train_neighbors=None,
+                 kneighbors=3
+                 , sensitive_class_value=None, dominant_class_value=None, class_positive_value=None,
+                 class_negative_value=None):
+        if train_neighbors is None:
+            train_neighbors= []
+        self.index = index
+        self.counter_for_flip =counter_for_flip
+        self.sensitive_attribute = sensitive_attribute
+        self.train_neighbors = train_neighbors
+        self.kneighbors = kneighbors
+        self.sensitive_class_value  = sensitive_class_value
+        self.dominant_class_value  = dominant_class_value
+        self.class_positive_value = class_positive_value
+        self.class_negative_value =class_negative_value
+
+    @property
+    def predicted_label(self):
+        if self.kneighbors is None or self.kneighbors == 0:
+            raise ValueError("kneighbors must be a non-zero positive integer.")
+        return self.class_positive_value if self.counter_for_flip / self.kneighbors <= 0.5 else self.class_negative_value
+
+    def __repr__(self):
+        return f"Val_Neighbor({self.index})"
+
+class TrainerKey:
+    def __init__(self, index=None, sensitive_class_value=None, dominant_class_value=None, class_positive_value=None,
+                 class_negative_value=None,include_dominant_attribute=False):
+        self.sensitive_class_value = sensitive_class_value
+        self.dominant_class_value = dominant_class_value
+        self.class_positive_value = class_positive_value
+        self.class_negative_value = class_negative_value
+        self.include_dominant_attribute = include_dominant_attribute
+        self.index = index
+        self.neighbors = []
+
+    @property
+    def weight(self):
+        sum= 0
+        for neighbor in self.neighbors:
+            if neighbor.sensitive_attribute == self.sensitive_class_value:
+                sum += 1/ neighbor.counter_for_flip
+            elif neighbor.sensitive_attribute == self.dominant_class_value and  self.include_dominant_attribute:
+                sum += -1/ neighbor.counter_for_flip
+
+        return sum
+
+    @property
+    def secondary_weight(self):
+        sum = 0
+        for neighbor in self.neighbors:
+            if neighbor.sensitive_attribute == self.dominant_class_value:
+                sum += 1 / neighbor.counter_for_flip
+        return sum
+
+
+
+    @property
+    def sum_positive_protected_attr(self):
+        sum = 0
+        for neighbor in self.neighbors:
+            if neighbor.sensitive_attribute == self.sensitive_class_value and neighbor.predicted_label == self.class_positive_value:
+                sum += 1
+        return sum
+
+    @property
+    def sum_positive_dom_attr(self):
+        sum = 0
+        for neighbor in self.neighbors:
+            if neighbor.sensitive_attribute == self.dominant_class_value and neighbor.predicted_label == self.class_positive_value:
+                sum += 1
+        return sum
+
+#TODO: sum_positive_dom_attr
+    # List to hold references to Neighbor objects
+
+    def add_neighbor(self, neighbor):
+        """Add a Neighbor to the container."""
+        self.neighbors.append(neighbor)
+
+    def __iter__(self):
+        """Make the container iterable."""
+        return iter(self.neighbors)
+
+    def __getitem__(self, index):
+        """Allow access by index."""
+        return self.neighbors[index]
+
+    def __len__(self):
+        """Return the number of neighbors."""
+        return len(self.neighbors)
+
+    def __repr__(self):
+        """Provide a string representation of the container."""
+        return f"Train_Neighbor({self.index})"
+
 

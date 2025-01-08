@@ -1,13 +1,20 @@
 import numpy as np
+
 from sklearn.metrics import confusion_matrix, accuracy_score
 
-from src.utils.general_utils import get_negative_protected_values
 
 
 class Evaluate():
 
-    def  __init__(self, y_pred=None, y_actual=None,y_sensitive_attribute=None,class_attribute= None):
-        #TODO: finish the t0 logic see if is needed here
+    def  __init__(self, y_pred=None,
+                  y_actual=None,
+                  y_sensitive_attribute=None,
+                  class_attribute= None,
+                  sensitive_class_value = None ,
+                  dominant_class_value = None ,
+                  class_positive_value = None ,
+                  class_negative_value = None
+    ):
         self.y_pred = y_pred
         self.y_actual = y_actual[class_attribute].tolist()
         self.y_sensitive_attribute = y_sensitive_attribute
@@ -17,26 +24,24 @@ class Evaluate():
         self.tn = 0
         self.fn = 0
         self.negative_sensitive_class_counter = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if
-                     self.y_sensitive_attribute[i] == 0].count(2)
+                     self.y_sensitive_attribute[i] == sensitive_class_value].count(class_negative_value)
 
-        self.tp_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] == self.y_actual[i]].count(1)
-        self.fp_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] != self.y_actual[i]].count(1)
-        self.tn_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] == self.y_actual[i]].count(2)
-        self.fn_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 and self.y_pred[i] != self.y_actual[i]].count(2)
+        self.tp_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == sensitive_class_value and self.y_pred[i] == self.y_actual[i]].count(class_positive_value)
+        self.fp_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == sensitive_class_value and self.y_pred[i] != self.y_actual[i]].count(class_positive_value)
+        self.tn_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == sensitive_class_value and self.y_pred[i] == self.y_actual[i]].count(class_negative_value)
+        self.fn_sensitive_attr = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == sensitive_class_value and self.y_pred[i] != self.y_actual[i]].count(class_negative_value)
 
-        self.number_sensitive_attr_predicted_positive = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 ].count(1)
-        self.number_sensitive_attr_predicted_negative = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 0 ].count(2)
+        self.number_sensitive_attr_predicted_positive = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == sensitive_class_value ].count(class_positive_value)
+        self.number_sensitive_attr_predicted_negative = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == sensitive_class_value ].count(class_negative_value)
 
 
-        self.number_dom_attr_predicted_positive = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 1 ].count(1)
-        self.number_dom_attr_predicted_negative = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == 1 ].count(2)
+        self.number_dom_attr_predicted_positive = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == dominant_class_value ].count(class_positive_value)
+        self.number_dom_attr_predicted_negative = [self.y_pred[i] for i in range(len(self.y_sensitive_attribute)) if self.y_sensitive_attribute[i] == dominant_class_value ].count(class_negative_value)
 
         self.sen_attr_positive_ratio = self.number_sensitive_attr_predicted_positive / (self.number_sensitive_attr_predicted_positive+self.number_sensitive_attr_predicted_negative)
         self.dom_attr_positive_ratio = self.number_dom_attr_predicted_positive / (self.number_dom_attr_predicted_positive+self.number_dom_attr_predicted_negative)
         self.ratio_diff = self.sen_attr_positive_ratio - self.dom_attr_positive_ratio
 
-        self.t0 = get_negative_protected_values(pred_val, self.x_val, self.y_val_sensitive_attr,
-                                                    self.class_attribute)
 
         for i in range(len(self.y_pred)):
             if self.y_actual[i] == self.y_pred[i] == 1:

@@ -3,7 +3,7 @@ defaults:
   - override hydra/hydra_logging: none
   - override hydra/job_logging: none
 data:
-  load_from: "data/dutch_cencus_wtarget.csv"
+  load_from: "data/diabetic_data_wtarget.csv"
   results_path : "results/"
   plot_path : "plots/"
   sensitive_attribute :
@@ -11,7 +11,7 @@ data:
     protected: 'female'
   class_attribute :
     name: 'class'
-    values: [1,2] #1 or 2 / good or bad
+    positive_value: 1 #1 or 2 / good or bad
 
 
 basic:
@@ -21,12 +21,16 @@ basic:
     val_data : True
     resampling_train_set : False
   split_percent : 0.2
-  neighbors: 1
+  neighbors: 3
   focus_metric : 'fairness_parity_rate'
-  points_removed_from_each_iteration : 100
+  condition:
+    affirmative_action: true
+    difference_percentage: 0
+  weight:
+    include_dominant_attribute: false
+    second_weight: false
 
-
-experiment_name: "test"
+experiment_name: "diabetic_data_no_ada"
 
 hydra:
   output_subdir: /data
