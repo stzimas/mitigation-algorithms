@@ -5,8 +5,6 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
 
-
-from src.dataloader.dataloader import DataLoader
 from src.config.schema import Config
 from src.jobs.evaluate import Evaluate
 from src.utils.general_utils import get_negative_protected_values, check_column_value, TrainerKey, Neighbor, \
@@ -15,7 +13,26 @@ from src.utils.preprocess_utils import encode_dataframe, split_df, get_xy, backw
 
 
 class FairnessParity:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config=None, knn_neighbors=None,
+                                            class_attribute=None,
+                                            sensitive_attribute=None,
+                                            sensitive_attribute_protected=None,
+                                            positive_class_value=None,
+                                            feature_selection=False,
+                                            split_percent=0.2,
+                                            has_val_data=True,
+                                            exclude_sensitive_attribute=True,
+                                            resampling_train_set= False,
+                                            weight_includes_dominant_attribute= True,
+                                            second_weight = True,
+                                            affirmative_action = True,
+                                            difference_percentage = 0.0 ,
+                                            load_from = None,
+                                            data = None,
+                                            experiment_name="fairknn",
+                                            local_dir_res="results/",
+                                            local_dir_plt="plots/",
+                                            csv_to_word = False):
         self.reverse_index = None
         self.t0 = None
         self.y_train_sensitive_attr = None
@@ -24,13 +41,50 @@ class FairnessParity:
         self.total_protected_positive_flipped = None
         self.total_dom_positive_flipped = None
         self.val_neighbors = []
-        self.config = config
-        self.experiment_name = self.config.experiment_name
-        self.local_dir_res = 'data/' + self.experiment_name + '/' + self.config.data.results_path
-        self.local_dir_plt = 'data/' + self.experiment_name + '/' + self.config.data.plot_path
-        self.sensitive_attribute = self.config.data.sensitive_attribute.name
-        self.class_attribute = self.config.data.class_attribute.name
+        if config == None:
+            self.knn_neighbors = knn_neighbors
+            self.experiment_name = experiment_name
+            self.local_dir_res = self.experiment_name + '/' + local_dir_res
+            self.local_dir_plt = self.experiment_name + '/' + local_dir_plt
+            self.sensitive_attribute = sensitive_attribute
+            self.class_attribute = class_attribute
+            self.sensitive_attribute_protected = sensitive_attribute_protected
+            self.positive_class_value = positive_class_value
+            self.feature_selection = feature_selection
+            self.split_percent = split_percent
+            self.has_val_data = has_val_data
+            self.resampling_train_set =resampling_train_set
+            self.exclude_sensitive_attribute = exclude_sensitive_attribute
+            self.weight_includes_dominant_attribute = weight_includes_dominant_attribute
+            self.second_weight = second_weight
+            self.affirmative_action = affirmative_action
+            self.difference_percentage = difference_percentage
+            self.load_from = load_from
+            self.csv_to_word = csv_to_word
+        else:
+            self.config = config
+            self.knn_neighbors = self.config.basic.neighbors
+            self.experiment_name = self.config.experiment_name
+            self.local_dir_res = 'data/' + self.experiment_name + '/' + self.config.data.results_path
+            self.local_dir_plt = 'data/' + self.experiment_name + '/' + self.config.data.plot_path
+            self.sensitive_attribute = self.config.data.sensitive_attribute.name
+            self.class_attribute = self.config.data.class_attribute.name
+            self.sensitive_attribute_protected = self.config.data.sensitive_attribute.protected
+            self.positive_class_value = self.config.data.class_attribute.positive_value
+            self.feature_selection = self.config.basic.feature_selection
+            self.split_percent = self.config.basic.split_percent
+            self.has_val_data = self.config.basic.split_data.val_data
+            self.resampling_train_set = self.config.basic.split_data.resampling_train_set
+            self.exclude_sensitive_attribute = self.config.basic.exclude_sensitive_attribute
+            self.weight_includes_dominant_attribute =self.config.basic.weight.include_dominant_attribute
+            self.second_weight = self.config.basic.weight.second_weight
+            self.affirmative_action = self.config.basic.condition.affirmative_action
+            self.difference_percentage = self.config.basic.condition.difference_percentage
+            self.load_from = self.config.data.load_from
+            self.csv_to_word = self.config.csv_to_word
 
+
+        self.df = self._dataloader() if self.load_from is not None else data
         self.sensitive_class_value = None
         self.dominant_class_value = None
         self.class_positive_value = None
@@ -48,47 +102,52 @@ class FairnessParity:
                     for directory in dirs:
                         shutil.rmtree(os.path.join(root, directory))
 
+    def _dataloader(self):
+        df = pd.read_csv(self.load_from)
+        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+        return df
+
+
     def _preprocess(self, df):
         """
             Preprocesses the dataset by encoding categorical features, selecting features,
             splitting the data into training, validation, and test sets, and optionally excluding
             the sensitive attribute.
-
             """
         df, self.label_encoders = encode_dataframe(df)
 
-        self.sensitive_class_value = int(self.label_encoders[self.config.data.sensitive_attribute.name].transform([self.config.data.sensitive_attribute.protected])[0])
+        self.sensitive_class_value = int(self.label_encoders[self.sensitive_attribute].transform([self.sensitive_attribute_protected])[0])
         self.dominant_class_value = next(value for value in [0, 1] if value != self.sensitive_class_value)
-        self.class_positive_value = self.config.data.class_attribute.positive_value
-        self.class_negative_value = [value for value in df[self.config.data.class_attribute.name].unique() if value != self.class_positive_value][0]
+        self.class_positive_value = self.positive_class_value
+        self.class_negative_value = [value for value in df[self.class_attribute].unique() if value != self.class_positive_value][0]
 
-        if self.config.basic.feature_selection:
+        if self.feature_selection:
             df = backward_regression(df, self.sensitive_attribute)
 
         self.features = df.columns.values.tolist()
         self.features.remove(self.class_attribute)
 
         train_set, val_set, test_set = split_df(df=df,
-                                                split_percent=self.config.basic.split_percent,
-                                                protected_attribute=self.config.data.sensitive_attribute.name,
-                                                val_data=self.config.basic.split_data.val_data,
-                                                resampling_train_set=self.config.basic.split_data.resampling_train_set,
+                                                split_percent=self.split_percent,
+                                                protected_attribute=self.sensitive_attribute,
+                                                val_data=self.has_val_data,
+                                                resampling_train_set=self.resampling_train_set,
                                                 sensitive_class_value = self.sensitive_class_value,
                                                 dominant_class_value = self.dominant_class_value,
                                                 class_positive_value = self.class_positive_value,
                                                 class_negative_value = self.class_negative_value)
 
         self.x_train, self.y_train, self.y_train_sensitive_attr = get_xy(df=train_set,
-                                                        sensitive_attribute=self.config.data.sensitive_attribute.name,
-                                                        target_column=self.config.data.class_attribute.name)
+                                                        sensitive_attribute=self.sensitive_attribute,
+                                                        target_column=self.class_attribute)
         self.x_test, self.y_test, self.y_test_sensitive_attr = get_xy(df=test_set,
-                                                       sensitive_attribute=self.config.data.sensitive_attribute.name,
-                                                       target_column=self.config.data.class_attribute.name)
+                                                       sensitive_attribute=self.sensitive_attribute,
+                                                       target_column=self.class_attribute)
         self.x_val, self.y_val, self.y_val_sensitive_attr = get_xy(df=val_set,
-                                                    sensitive_attribute=self.config.data.sensitive_attribute.name,
-                                                    target_column=self.config.data.class_attribute.name)
+                                                    sensitive_attribute=self.sensitive_attribute,
+                                                    target_column=self.class_attribute)
 
-        if self.config.basic.exclude_sensitive_attribute:
+        if self.exclude_sensitive_attribute:
             self.x_train = self.x_train.drop(self.sensitive_attribute,axis=1)
             self.x_val = self.x_val.drop(self.sensitive_attribute,axis=1)
             self.x_test = self.x_test.drop(self.sensitive_attribute,axis=1)
@@ -111,7 +170,7 @@ class FairnessParity:
            None (updates instance attributes).
            """
 
-        self.model = KNeighborsClassifier(n_neighbors=self.config.basic.neighbors,metric='euclidean')
+        self.model = KNeighborsClassifier(n_neighbors=self.knn_neighbors,metric='euclidean')
         self.model.fit(self.x_train, self.y_train[self.class_attribute])
 
         self.pred_val = self.model.predict(self.x_val)
@@ -150,7 +209,7 @@ class FairnessParity:
         evl = Evaluate(y_actual=y_data,
                         y_pred= y_pred,
                         y_sensitive_attribute=y_sensitive_attribute,
-                        class_attribute = self.config.data.class_attribute.name,
+                        class_attribute = self.class_attribute,
                         sensitive_class_value = self.sensitive_class_value,
                         dominant_class_value = self.dominant_class_value,
                         class_positive_value = self.class_positive_value,
@@ -220,7 +279,7 @@ class FairnessParity:
             while True:
                 distance, index = self.model.kneighbors(t0.iloc[[i]])
                 index_to_be_removed = index[0].tolist()[0]
-                vallue = check_column_value(self.y_train, index_to_be_removed, self.config.data.class_attribute.name)
+                vallue = check_column_value(self.y_train, index_to_be_removed, self.class_attribute)
                 if vallue == self.class_negative_value:
                     neighbors.append(index_to_be_removed + original_index)
                     self.remove_indices_from_train(index_to_be_removed)
@@ -260,7 +319,7 @@ class FairnessParity:
         same_distance_removal = []
         for i, distance in zip(index[0], distance[0]):
             if i != neighbor_index and distance == target_distance and check_column_value(self.y_train, i,
-                                                                                               self.config.data.class_attribute.name) != self.class_positive_value:
+                                                                                               self.class_attribute) != self.class_positive_value:
                 same_distance_removal.append(i)
         return same_distance_removal
 
@@ -288,7 +347,7 @@ class FairnessParity:
         for sublist in indices:
             new_sublist = []
             for i,element in enumerate(sublist):
-                value = check_column_value(self.y_train,element,self.config.data.class_attribute.name)
+                value = check_column_value(self.y_train,element,self.class_attribute)
                 if value == self.class_negative_value:
                     new_sublist = sublist[:i+1]
                 else:
@@ -311,7 +370,7 @@ class FairnessParity:
 
         counter = 0
         for neighbor in train_neighbors:
-            if check_column_value(self.y_train, neighbor, self.config.data.class_attribute.name) == self.class_negative_value:
+            if check_column_value(self.y_train, neighbor, self.class_attribute) == self.class_negative_value:
                 counter += 1
         return counter
 
@@ -409,7 +468,7 @@ class FairnessParity:
                 counter_for_flip= self._get_flip_counter(sublist),
                 train_neighbors=sublist,
                 sensitive_attribute= sensitive_attribute ,
-                kneighbors=self.config.basic.neighbors,
+                kneighbors=self.knn_neighbors,
                 sensitive_class_value = self.sensitive_class_value,
                 dominant_class_value = self.dominant_class_value,
                 class_positive_value = self.class_positive_value,
@@ -484,12 +543,12 @@ class FairnessParity:
 
         dictionary = {}
         for container_key in train_neighbors:
-            if check_column_value(self.y_train, container_key, self.config.data.class_attribute.name) == 2:
+            if check_column_value(self.y_train, container_key, self.class_attribute) == self.class_negative_value:
                 container = TrainerKey(container_key,sensitive_class_value=self.sensitive_class_value,
                 dominant_class_value=self.dominant_class_value,
                 class_positive_value=self.class_positive_value,
                 class_negative_value=self.class_negative_value,
-                include_dominant_attribute= self.config.basic.weight.include_dominant_attribute)
+                include_dominant_attribute= self.weight_includes_dominant_attribute)
                 dictionary[container_key] = container
 
         for neighbor_id, sublist in enumerate(indexes):
@@ -498,7 +557,7 @@ class FairnessParity:
                 counter_for_flip= self._get_flip_counter(sublist),
                 train_neighbors=sublist,
                 sensitive_attribute= self.sensitive_class_value ,
-                kneighbors=self.config.basic.neighbors,
+                kneighbors=self.knn_neighbors,
                 sensitive_class_value=self.sensitive_class_value,
                 dominant_class_value=self.dominant_class_value,
                 class_positive_value=self.class_positive_value,
@@ -644,7 +703,7 @@ class FairnessParity:
         keys_with_max_weight = []
 
         for k, item in self.reverse_index.items():
-            item_weight = item.weight  if self.config.basic.weight.include_dominant_attribute else item.weight - item.secondary_weight if self.config.basic.weight.second_weight else item.weight
+            item_weight = item.weight  if self.weight_includes_dominant_attribute else item.weight - item.secondary_weight if self.second_weight else item.weight
             if item_weight  > max_weight:
                 max_weight, keys_with_max_weight = item_weight, [item]
             elif item_weight == max_weight:
@@ -674,11 +733,11 @@ class FairnessParity:
             Returns:
                 bool: `True` if the objective condition is satisfied, `False` otherwise.
             """
-        if self.config.basic.condition.affirmative_action:
-            allowed_difference = (self.sum_positive_pred_dom_innit * self.config.basic.condition.difference_percentage) // 100
+        if self.affirmative_action:
+            allowed_difference = (self.sum_positive_pred_dom_innit * self.difference_percentage) // 100
             return self.sum_positive_pred_dom_innit - self.sum_positive_pred_protected >= allowed_difference
         else:
-            threshold = self.config.basic.condition.difference_percentage / 100
+            threshold = self.difference_percentage / 100
             diff = self.get_difference_objective()
             return diff < threshold + 0.005
 
@@ -707,13 +766,10 @@ class FairnessParity:
 
     def run_fairness_par(self):
 
-        dataloader = DataLoader()
-        df = dataloader.load_data(config=self.config)
-
-        self._preprocess(df)
+        self._preprocess(self.df)
         self._train()
         reslts_df , train_indexer =self.label_flip()
-        rename_columns_(reslts_df,self.local_dir_res + 'most_common_flip_results_doc.csv') and self.config.csv_to_word
+        rename_columns_(reslts_df,self.local_dir_res + 'most_common_flip_results_doc.csv') and self.csv_to_word
 
         return reslts_df, train_indexer
 '''
