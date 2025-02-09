@@ -22,14 +22,13 @@ basic:
     resampling_train_set : False
   split_percent : 0.2
   neighbors: 3
-  focus_metric : 'fairness_parity_rate'
   condition:
     affirmative_action: false
+    sensitive_catches_dominant: true
     difference_percentage: 0
   weight:
-    include_dominant_attribute: false
     second_weight: true
-experiment_name: "test"
+experiment_name: "red_blue_ida"
 csv_to_word : true
 
 hydra:

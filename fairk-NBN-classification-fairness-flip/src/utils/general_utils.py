@@ -195,17 +195,15 @@ class TrainerKey:
             dominant_class_value (any, optional): The value representing the dominant class.
             class_positive_value (any, optional): The value representing a positive classification.
             class_negative_value (any, optional): The value representing a negative classification.
-            include_dominant_attribute (bool): Flag indicating whether to include dominant attribute weighting.
             neighbors (list): A list of neighboring `Neighbor` objects.
 
         """
     def __init__(self, index=None, sensitive_class_value=None, dominant_class_value=None, class_positive_value=None,
-                 class_negative_value=None,include_dominant_attribute=False):
+                 class_negative_value=None):
         self.sensitive_class_value = sensitive_class_value
         self.dominant_class_value = dominant_class_value
         self.class_positive_value = class_positive_value
         self.class_negative_value = class_negative_value
-        self.include_dominant_attribute = include_dominant_attribute
         self.index = index
         self.neighbors = []
 

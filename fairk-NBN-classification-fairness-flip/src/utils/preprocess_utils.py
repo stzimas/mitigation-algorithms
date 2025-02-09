@@ -6,7 +6,7 @@ from sklearn.preprocessing import LabelEncoder
 import statsmodels.api as sm
 
 
-def split_df(df, split_percent, protected_attribute, val_data=False,resampling_train_set=True,sensitive_class_value = None, dominant_class_value = None, class_positive_value = None, class_negative_value = None):
+def split_df(df, split_percent, protected_attribute,class_attribute, val_data=False,resampling_train_set=True,sensitive_class_value = None, dominant_class_value = None, class_positive_value = None, class_negative_value = None):
     """
     Splits a DataFrame into training, testing, and optionally validation sets while maintaining
     balance across a protected attribute.
@@ -30,10 +30,10 @@ def split_df(df, split_percent, protected_attribute, val_data=False,resampling_t
     def generate_groups(df):
         """Creates a dictionary of data subsets based on class and protected attribute values."""
         return {
-            'dom_attr_positive': df[(df['class'] == class_positive_value) & (df[protected_attribute] == dominant_class_value)],
-            'sen_attr_positive': df[(df['class'] == class_positive_value) & (df[protected_attribute] == sensitive_class_value)],
-            'dom_attr_negative': df[(df['class'] == class_negative_value) & (df[protected_attribute] == dominant_class_value)],
-            'sen_attr_negative': df[(df['class'] == class_negative_value) & (df[protected_attribute] == sensitive_class_value)]
+            'dom_attr_positive': df[(df[class_attribute] == class_positive_value) & (df[protected_attribute] == dominant_class_value)],
+            'sen_attr_positive': df[(df[class_attribute] == class_positive_value) & (df[protected_attribute] == sensitive_class_value)],
+            'dom_attr_negative': df[(df[class_attribute] == class_negative_value) & (df[protected_attribute] == dominant_class_value)],
+            'sen_attr_negative': df[(df[class_attribute] == class_negative_value) & (df[protected_attribute] == sensitive_class_value)]
         }
     def get_samples(df,split_percent):
         """Selects a stratified sample from the dataset based on the split percentage."""
@@ -52,8 +52,8 @@ def split_df(df, split_percent, protected_attribute, val_data=False,resampling_t
     test_set = test_set.reset_index(drop=True).sample(frac=1, random_state=42).reset_index(drop=True)
     train_set = train_set.reset_index(drop=True).sample(frac=1, random_state=42).reset_index(drop=True)
     if resampling_train_set:
-        positive_train_set = train_set[train_set['class'] == class_positive_value]
-        negative_train_set = train_set[train_set['class'] == class_negative_value]
+        positive_train_set = train_set[train_set[class_attribute] == class_positive_value]
+        negative_train_set = train_set[train_set[class_attribute] == class_negative_value]
 
         min_count1 = min(positive_train_set[protected_attribute].value_counts())
         min_count2 = min(negative_train_set[protected_attribute].value_counts())

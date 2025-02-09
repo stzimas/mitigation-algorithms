@@ -11,6 +11,7 @@ class SplitData:
 @dataclass
 class Condition:
     affirmative_action:bool
+    sensitive_catches_dominant:bool
     difference_percentage: int
 @dataclass
 class Weight:

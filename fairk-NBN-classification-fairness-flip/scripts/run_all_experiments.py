@@ -6,10 +6,13 @@ experiment_runs =\
     [['color','red',"red_blue_dataset",'red_blue_'],
      ['Sex','female','diabetic_data_wtarget','diabetic_'],
      ['Sex','female','dutch_cencus_wtarget','dutch_cencus_'],
-     ['Sex','female','law_dataset_wtarget','law_']]
+     ['Sex','female','law_dataset_wtarget','law_'],
+     ['Sex','female','uci_cc_wtarget','uci_cc_'],
+     ['marital','married','bank_wtarget','bank_']]
 
-ida = [True,False,True,'ida']
-eda = [False,True,False,'eda']
+
+ida = [True,True,True,'ida']
+eda = [False,False,True,'eda']
 for run in experiment_runs:
     print(run[3])
 
@@ -20,9 +23,8 @@ for run in experiment_runs:
         sensitive_attribute_protected=run[1],
         positive_class_value=1,
         split_percent = 0.1 if run[3] == 'law_' else 0.2,
-        weight_includes_dominant_attribute=ida[0],
         second_weight=ida[1],
-        affirmative_action=ida[2],
+        sensitive_catches_dominant=ida[2],
         load_from="../data/"+run[2]+".csv",
         experiment_name= run[3]+ida[3],
         local_dir_res="results/",
@@ -40,9 +42,8 @@ for run in experiment_runs:
         sensitive_attribute_protected=run[1],
         split_percent=0.1 if run[3] == 'law_' else 0.2,
         positive_class_value=1,
-        weight_includes_dominant_attribute=eda[0],
         second_weight=eda[1],
-        affirmative_action=eda[2],
+        sensitive_catches_dominant=eda[2],
         load_from="../data/" + run[2] + ".csv",
         experiment_name=run[3] + eda[3],
         local_dir_res="results/",

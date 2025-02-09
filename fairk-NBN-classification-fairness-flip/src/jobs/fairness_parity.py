@@ -23,9 +23,9 @@ class FairnessParity:
                                             has_val_data=True,
                                             exclude_sensitive_attribute=True,
                                             resampling_train_set= False,
-                                            weight_includes_dominant_attribute= True,
                                             second_weight = True,
-                                            affirmative_action = True,
+                                            sensitive_catches_dominant = True,
+                                            affirmative_action = False,
                                             difference_percentage = 0.0 ,
                                             load_from = None,
                                             data = None,
@@ -57,8 +57,8 @@ class FairnessParity:
             self.has_val_data = has_val_data
             self.resampling_train_set =resampling_train_set
             self.exclude_sensitive_attribute = exclude_sensitive_attribute
-            self.weight_includes_dominant_attribute = weight_includes_dominant_attribute
             self.second_weight = second_weight
+            self.sensitive_catches_dominant = sensitive_catches_dominant
             self.affirmative_action = affirmative_action
             self.difference_percentage = difference_percentage
             self.load_from = load_from
@@ -78,8 +78,8 @@ class FairnessParity:
             self.has_val_data = self.config.basic.split_data.val_data
             self.resampling_train_set = self.config.basic.split_data.resampling_train_set
             self.exclude_sensitive_attribute = self.config.basic.exclude_sensitive_attribute
-            self.weight_includes_dominant_attribute =self.config.basic.weight.include_dominant_attribute
             self.second_weight = self.config.basic.weight.second_weight
+            self.sensitive_catches_dominant = self.config.basic.condition.sensitive_catches_dominant
             self.affirmative_action = self.config.basic.condition.affirmative_action
             self.difference_percentage = self.config.basic.condition.difference_percentage
             self.load_from = self.config.data.load_from
@@ -134,6 +134,7 @@ class FairnessParity:
         train_set, val_set, test_set = split_df(df=self.df,
                                                 split_percent=self.split_percent,
                                                 protected_attribute=self.sensitive_attribute,
+                                                class_attribute=self.class_attribute,
                                                 val_data=self.has_val_data,
                                                 resampling_train_set=self.resampling_train_set,
                                                 sensitive_class_value = self.sensitive_class_value,
@@ -569,8 +570,7 @@ class FairnessParity:
                 container = TrainerKey(container_key,sensitive_class_value=self.sensitive_class_value,
                 dominant_class_value=self.dominant_class_value,
                 class_positive_value=self.class_positive_value,
-                class_negative_value=self.class_negative_value,
-                include_dominant_attribute= self.weight_includes_dominant_attribute)
+                class_negative_value=self.class_negative_value)
                 dictionary[container_key] = container
 
         for neighbor_id, sublist in enumerate(indexes):
@@ -696,7 +696,7 @@ class FairnessParity:
                 eval_results = update_results_dict(
                     number_sensitive_attr_predicted_positive=self.sum_positive_pred_protected  ,
                     number_sensitive_attr_predicted_negative=len(self.t0)- self.total_protected_positive_flipped ,
-                    number_dom_attr_predicted_positive= self.sum_positive_pred_dom + self.total_dom_positive_flipped,
+                    number_dom_attr_predicted_positive= self.sum_positive_pred_dom ,
                     number_sensitive_attributes_flipped=self.total_protected_positive_flipped,
                     number_flipped = self.total_protected_positive_flipped + self.total_dom_positive_flipped,
                     sum_sa_indices_flipped=curr_protected_flips,
@@ -717,7 +717,6 @@ class FairnessParity:
             have the same weight, the method will return the one with the highest primary weight.
 
             The method supports the following configurations:
-            - If `include_dominant_attribute` is enabled, the weight is the sum of the primary and secondary weights.
             - If `second_weight` is enabled, the weight is the difference between the primary and secondary weights.
             - If neither is enabled, the weight is just the primary weight.
 
@@ -729,7 +728,7 @@ class FairnessParity:
         keys_with_max_weight = []
 
         for k, item in self.reverse_index.items():
-            item_weight = item.weight  if self.weight_includes_dominant_attribute else item.weight - item.secondary_weight if self.second_weight else item.weight
+            item_weight = item.weight  if not self.second_weight else item.weight - item.secondary_weight
             if item_weight  > max_weight:
                 max_weight, keys_with_max_weight = item_weight, [item]
             elif item_weight == max_weight:
@@ -759,9 +758,11 @@ class FairnessParity:
             Returns:
                 bool: `True` if the objective condition is satisfied, `False` otherwise.
             """
+        if self.sensitive_catches_dominant:
+            return self.sum_positive_pred_dom - self.sum_positive_pred_protected >= -1
         if self.affirmative_action:
             allowed_difference = (self.sum_positive_pred_dom_innit * self.difference_percentage) // 100
-            return self.sum_positive_pred_dom_innit - self.sum_positive_pred_protected >= allowed_difference
+            return self.sum_positive_pred_dom_innit - self.sum_positive_pred_protected >= allowed_difference -1
         else:
             threshold = self.difference_percentage / 100
             diff = self.get_difference_objective()
@@ -794,7 +795,7 @@ class FairnessParity:
 
         self._preprocess(self.df)
         self._train()
-
+        self.get_statistics_df()
         reslts_df , train_indexer =self.label_flip()
 
         rename_columns_(reslts_df,self.local_dir_res + self.experiment_name+'_'+'most_common_flip_results.csv') and self.csv_to_word
