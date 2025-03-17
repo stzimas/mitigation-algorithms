@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 import shutil
 import numpy as np
 import pandas as pd
@@ -8,7 +9,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from src.config.schema import Config
 from src.jobs.evaluate import Evaluate
 from src.utils.general_utils import get_negative_protected_values, check_column_value, TrainerKey, Neighbor, \
-    update_results_dict, rename_columns_, check_data_schema
+    update_results_dict, rename_columns_, check_data_schema, export_test_statistics
 from src.utils.preprocess_utils import encode_dataframe, split_df, get_xy, backward_regression, flip_value
 
 
@@ -20,11 +21,13 @@ class FairnessParity:
                                             positive_class_value=None,
                                             feature_selection=False,
                                             split_percent=0.2,
+                                            basic_split = False,
                                             has_val_data=True,
                                             exclude_sensitive_attribute=True,
                                             resampling_train_set= False,
                                             second_weight = True,
                                             sensitive_catches_dominant = True,
+                                            random_train_point = False,
                                             affirmative_action = False,
                                             difference_percentage = 0.0 ,
                                             load_from = None,
@@ -54,6 +57,8 @@ class FairnessParity:
             self.positive_class_value = positive_class_value
             self.feature_selection = feature_selection
             self.split_percent = split_percent
+            self.basic_split = basic_split
+            self.random_train_point = random_train_point
             self.has_val_data = has_val_data
             self.resampling_train_set =resampling_train_set
             self.exclude_sensitive_attribute = exclude_sensitive_attribute
@@ -75,6 +80,8 @@ class FairnessParity:
             self.positive_class_value = self.config.data.class_attribute.positive_value
             self.feature_selection = self.config.basic.feature_selection
             self.split_percent = self.config.basic.split_percent
+            self.basic_split = self.config.basic.basic_split
+            self.random_train_point = self.config.basic.random_train_point
             self.has_val_data = self.config.basic.split_data.val_data
             self.resampling_train_set = self.config.basic.split_data.resampling_train_set
             self.exclude_sensitive_attribute = self.config.basic.exclude_sensitive_attribute
@@ -140,7 +147,8 @@ class FairnessParity:
                                                 sensitive_class_value = self.sensitive_class_value,
                                                 dominant_class_value = self.dominant_class_value,
                                                 class_positive_value = self.class_positive_value,
-                                                class_negative_value = self.class_negative_value)
+                                                class_negative_value = self.class_negative_value,
+                                                basic_split= self.basic_split)
 
         self.x_train, self.y_train, self.y_train_sensitive_attr = get_xy(df=train_set,
                                                         sensitive_attribute=self.sensitive_attribute,
@@ -206,8 +214,16 @@ class FairnessParity:
         stats_df = stats_df.where(pd.notnull(stats_df), None)
         stats_df['val_percentage'] = stats_df.apply(lambda row: (row['val'] / row['total'] * 100) if pd.notnull(row['val']) or pd.notnull(row['total']) else None, axis=1)
         stats_df = stats_df[['val', 'val_percentage', 'train', 'total']]
-        stats_df.to_csv(self.experiment_name +'_stats.csv',index=True) and self.experiment_name is not None
+        #stats_df.to_csv(self.experiment_name +'_stats.csv',index=True) and self.experiment_name is not None
+        stats_df.to_csv(self.experiment_name.removesuffix("_ida").removesuffix("_eda") +'_stats.csv',index=True) and self.experiment_name is not None
         return stats_df
+
+    def get_test_statistics_df(self,x ,y, y_sensitive_attr):
+        y_pred = self.model.predict(x)
+        test_eval =Evaluate(y_pred=y_pred,y_actual=y, y_sensitive_attribute=y_sensitive_attr,class_attribute=self.class_attribute, sensitive_class_value=self.sensitive_class_value,dominant_class_value=self.dominant_class_value,class_positive_value=self.class_positive_value,class_negative_value=self.class_negative_value,include_pred_stats=False,set_name='train')
+        test_statistics = test_eval.get_test_statistics_df()
+        return test_statistics
+
 
     def _eval(self,x_data,y_data, y_sensitive_attribute,k=None):
         """
@@ -468,6 +484,9 @@ class FairnessParity:
 
         filtered_t1 = [(lst, self.t1_ids[idx]) for idx, lst in enumerate(index)
                          if any(num in train_neighbors for num in lst)]
+        if not filtered_t1:  # This checks if filtered_t1 is an empty list
+            return (), ()
+
         dom_attr_indexes, t1_ids = zip(*filtered_t1)
         return dom_attr_indexes , t1_ids
 
@@ -625,8 +644,10 @@ class FairnessParity:
             """
         self.sum_positive_pred_dom += pred_dom_flipped or 0
         self.sum_positive_pred_protected += pred_sensitive_flipped or 0
+        self.rpr = self.sum_positive_pred_protected/self.sum_positive_val_protected
+        self.bpr = self.sum_positive_pred_dom/self.sum_positive_val_dom
 
-        diff = self.sum_positive_pred_protected/self.sum_positive_val_protected - self.sum_positive_pred_dom/self.sum_positive_val_dom
+        diff = self.rpr - self.bpr
 
 
         return diff
@@ -670,8 +691,11 @@ class FairnessParity:
         results_df = pd.DataFrame()
         train_indexer = []
         self.reverse_index = self.get_reverse_index()
+        self.reverse_index_innit = self.reverse_index.copy()
         self.total_protected_positive_flipped, self.total_dom_positive_flipped = self.get_flipped_positive_counter() #should be 0
+        diff =self.get_difference_objective()
         if self.experiment_name is not None:
+
             eval_results = update_results_dict(number_sensitive_attr_predicted_positive =self.sum_positive_pred_protected,
                                                number_sensitive_attr_predicted_negative = len(self.t0),
                                                number_dom_attr_predicted_positive = self.sum_positive_pred_dom,
@@ -679,7 +703,10 @@ class FairnessParity:
                                                number_flipped=self.total_protected_positive_flipped + self.total_dom_positive_flipped,
                                                sum_sa_indices_flipped = self.total_protected_positive_flipped,
                                                sum_indices_flipped=0,
-                                               iteration = len(train_indexer)+1)
+                                               rpr = self.rpr,
+                                               bpr = self.bpr,
+                                               diff = diff,
+                                               iteration = len(train_indexer))
             results_df = results_df._append(eval_results, ignore_index=True)
 
         while self._objective_checker():
@@ -691,7 +718,7 @@ class FairnessParity:
             self.make_train_label_positive(objective_key)
 
             curr_protected_flips, curr_dom_flips = self._get_current_flips()
-            diff = self.get_difference_objective(curr_protected_flips,curr_dom_flips)
+            diff = self.get_difference_objective(curr_protected_flips, curr_dom_flips)
             if self.experiment_name is not None:
                 eval_results = update_results_dict(
                     number_sensitive_attr_predicted_positive=self.sum_positive_pred_protected  ,
@@ -701,7 +728,11 @@ class FairnessParity:
                     number_flipped = self.total_protected_positive_flipped + self.total_dom_positive_flipped,
                     sum_sa_indices_flipped=curr_protected_flips,
                     sum_indices_flipped = curr_protected_flips + curr_dom_flips,
+                    rpr=self.rpr,
+                    bpr=self.bpr,
+                    diff=diff,
                     iteration=len(train_indexer))
+
                 results_df = results_df._append(eval_results, ignore_index=True)
         results_df.to_csv(self.local_dir_res + 'most_common_flip_results.csv', index=False) and self.experiment_name is not None
         if self.experiment_name is None:
@@ -724,6 +755,8 @@ class FairnessParity:
                 result_item (int): The index of the item in the `reverse_index` with the highest calculated weight.
                                    In case of ties, the item with the higher primary weight is selected.
             """
+        if self.random_train_point:
+            return random.choice(list(self.reverse_index.values())).index
         max_weight = float('-inf')
         keys_with_max_weight = []
 
@@ -759,14 +792,14 @@ class FairnessParity:
                 bool: `True` if the objective condition is satisfied, `False` otherwise.
             """
         if self.sensitive_catches_dominant:
-            return self.sum_positive_pred_dom - self.sum_positive_pred_protected >= -1
+            return self.sum_positive_pred_dom - self.sum_positive_pred_protected > 0
         if self.affirmative_action:
             allowed_difference = (self.sum_positive_pred_dom_innit * self.difference_percentage) // 100
-            return self.sum_positive_pred_dom_innit - self.sum_positive_pred_protected >= allowed_difference -1
+            return self.sum_positive_pred_dom_innit - self.sum_positive_pred_protected >= allowed_difference
         else:
             threshold = self.difference_percentage / 100
             diff = self.get_difference_objective()
-            return diff < threshold + 0.005
+            return diff <= threshold
 
     def get_flipped_positive_counter(self):
         """
@@ -796,6 +829,9 @@ class FairnessParity:
         self._preprocess(self.df)
         self._train()
         self.get_statistics_df()
+        ####
+        test_stas_before = self.get_test_statistics_df(self.x_val, self.y_val, self.y_val_sensitive_attr)
+        ####
         reslts_df , train_indexer =self.label_flip()
 
         rename_columns_(reslts_df,self.local_dir_res + self.experiment_name+'_'+'most_common_flip_results.csv') and self.csv_to_word
@@ -803,12 +839,14 @@ class FairnessParity:
             self.y_train = flip_value(self.y_train, train_indexer, self.class_positive_value, self.config.data.class_attribute.name)
             self._train()  # Retrain
             return train_indexer if self.return_model is False else self.model
-        return reslts_df, train_indexer
-        '''
-        for i in train_indexer:
-            self.y_train = flip_value(self.y_train,i,self.class_positive_value,self.config.data.class_attribute.name)
-            self._train() #Retrain
-            test = self._eval(self.x_val, self.y_val, self.y_val_sensitive_attr, k=None) #Test
-            k=1
-'''
 
+        #Stats####
+        '''
+        self.y_train = flip_value(self.y_train, train_indexer, self.class_positive_value,
+                                  self.class_attribute)
+        self._train()  # Retrain
+        '''
+        test_stas_after = self.get_test_statistics_df(self.x_val, self.y_val, self.y_val_sensitive_attr)
+        test_stats = export_test_statistics(test_stas_before, test_stas_after)
+        ######
+        return reslts_df, train_indexer ,test_stats

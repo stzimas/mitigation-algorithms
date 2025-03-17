@@ -3,7 +3,7 @@ defaults:
   - override hydra/hydra_logging: none
   - override hydra/job_logging: none
 data:
-  load_from: "data/red_blue_dataset.csv"
+  load_from: "../data/red_blue_dataset.csv"
   results_path : "results/"
   plot_path : "plots/"
   sensitive_attribute :
@@ -20,15 +20,17 @@ basic:
   split_data:
     val_data : True
     resampling_train_set : False
+  basic_split : true
+  random_train_point : false
   split_percent : 0.2
   neighbors: 3
   condition:
     affirmative_action: false
-    sensitive_catches_dominant: true
+    sensitive_catches_dominant: false
     difference_percentage: 0
   weight:
     second_weight: true
-experiment_name: "red_blue_ida"
+experiment_name: "red_blue"
 csv_to_word : true
 
 hydra:

@@ -7,6 +7,7 @@ import matplotlib.lines as mlines
 import imageio
 import pandas as pd
 from omegaconf import OmegaConf
+from scipy.interpolate import griddata  # For interpolation
 from dotenv import load_dotenv
 from src.config.schema import Config
 import matplotlib.pyplot as plt
@@ -30,22 +31,21 @@ def merge_t_dfs(df1, df2):
 
 def make_plot(fp,selected_val_df,neighbor_train_df, num=None):
 
-    x_min, x_max = fp.x_train['value'].min(), fp.x_train['value'].max()
-    y_min, y_max = fp.x_train['value1'].min(), fp.x_train['value1'].max()
-    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.5), np.arange(y_min, y_max, 0.5))
+    x_min, x_max = fp.x_train['value'].min()-1, fp.x_train['value'].max() +1
+    y_min, y_max = fp.x_train['value1'].min()-1, fp.x_train['value1'].max() +1
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.2), np.arange(y_min, y_max, 0.2))
 
-    mesh_df = pd.DataFrame({'value': xx.ravel(), 'value1': yy.ravel()})
-    mesh_df['prediction'] = fp.model.predict(mesh_df[['value', 'value1']])
-    Z = mesh_df['prediction'].values.reshape(xx.shape)
+    Z = fp.model.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
 
-    plt.figure(figsize=(30, 15))
+    plt.figure(figsize=(30, 30))
     bright_cmap = mcolors.ListedColormap(['#FFCC00', '#339933'])
-    plt.contourf(xx, yy, Z, alpha=0.4, cmap=bright_cmap)
+    plt.imshow(Z, extent=(x_min, x_max, y_min, y_max), origin='lower', cmap=bright_cmap, alpha=0.6)
 
 
     train_colors = ['red' if cls == 1 else 'blue' for cls in neighbor_train_df['color']]
     train_scatter =plt.scatter(neighbor_train_df['value'], neighbor_train_df['value1'],
-               c=train_colors, marker='o', s=120, edgecolor='k', label='Train Neighbors', zorder=1)
+               c=train_colors, marker='o', s=100, edgecolor='k', label='Train Neighbors', zorder=1)
 
     val_colors = ['red' if cls == 1 else 'blue' for cls in selected_val_df['color']]
     val_scatter =plt.scatter(selected_val_df['value'], selected_val_df['value1'],
@@ -57,8 +57,10 @@ def make_plot(fp,selected_val_df,neighbor_train_df, num=None):
     green_patch = mlines.Line2D([], [], color='#339933', lw=4, label='Negative')
 
     plt.legend(handles=[yellow_patch, green_patch, train_scatter, val_scatter], loc='upper left', fontsize=16)
+    plt.xlim(xx.min(), xx.max())
+    plt.ylim(yy.min(), yy.max())
     plt.title('Decision Boundary')
-    plt.savefig(filename, dpi=500, bbox_inches='tight', pad_inches=0.04)
+    plt.savefig(filename,  bbox_inches='tight', pad_inches=0.04)
     print(f"Creating Frame{num+1}")
 
     plt.close()
@@ -75,9 +77,11 @@ def make_gif(frames):
 
 
 def get_train_representation(fp):
-    train_indexes = list(fp.reverse_index.keys())
-    neighbor_train = fp.x_train.loc[train_indexes]
-    sensitive_val = [fp.y_train_sensitive_attr[i] for i, idx in enumerate(fp.x_train.index) if idx in train_indexes]
+    train_indexes = list(fp.reverse_index_innit.keys())
+    train_indexes_ = list(fp.reverse_index.keys())
+    filtered_indexes = [index for index in train_indexes if index not in train_indexes_]
+    neighbor_train = fp.x_train.loc[filtered_indexes]
+    sensitive_val = [fp.y_train_sensitive_attr[i] for i, idx in enumerate(fp.x_train.index) if idx in filtered_indexes]
     neighbor_train['color'] = sensitive_val
     return neighbor_train
 
@@ -85,7 +89,7 @@ def get_train_representation(fp):
 def main(config: Config):
     frames = []
     fp = FairnessParity(config)
-    reslts_df, train_indexer = fp.run_fairness_parity()
+    reslts_df, train_indexer, _ = fp.run_fairness_parity()
     neighbor_train_df = get_train_representation(fp)
     selected_val_df = merge_t_dfs(fp.t0, fp.t1)
     frame = make_plot(fp,selected_val_df,neighbor_train_df,num=0)

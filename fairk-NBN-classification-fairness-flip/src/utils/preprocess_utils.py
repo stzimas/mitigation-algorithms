@@ -3,10 +3,12 @@ import logging
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
 import statsmodels.api as sm
 
 
-def split_df(df, split_percent, protected_attribute,class_attribute, val_data=False,resampling_train_set=True,sensitive_class_value = None, dominant_class_value = None, class_positive_value = None, class_negative_value = None):
+def split_df(df, split_percent, protected_attribute, class_attribute, val_data=False, resampling_train_set=True, sensitive_class_value = None, dominant_class_value = None, class_positive_value = None, class_negative_value = None,
+             basic_split=None):
     """
     Splits a DataFrame into training, testing, and optionally validation sets while maintaining
     balance across a protected attribute.
@@ -45,6 +47,16 @@ def split_df(df, split_percent, protected_attribute,class_attribute, val_data=Fa
             test_samples.append(sampled_group)
         test_set = pd.concat(test_samples)
         return test_set
+
+    if basic_split :
+        train_set, temp_data = train_test_split(df, test_size=split_percent, random_state=42)
+        val_set, test_set = train_test_split(temp_data, test_size=0.5, random_state=42)
+        train_set = train_set.reset_index(drop=True)
+        val_set = val_set.reset_index(drop=True)
+        test_set = test_set.reset_index(drop=True)
+
+        return train_set, val_set, test_set
+
 
     test_set = get_samples(df, split_percent)
 

@@ -84,31 +84,42 @@ class Evaluate():
 
     def get_statistics_dict(self):
         statistics = {
-            'sum_sensitive_attr': self.sum_sensitive_attr,
-            'sum_dom_attr': self.sum_dom_attr,
+            'sum_red': self.sum_sensitive_attr,
+            'sum_blue': self.sum_dom_attr,
             'sum_positive': self.sum_positive,
             'sum_negative': self.sum_negative,
-            'sum_negative_sensitive_attr': self.sum_negative_sensitive_attr,
-            'sum_positive_sensitive_attr': self.sum_positive_sensitive_attr,
-            'sum_negative_dom_attr': self.sum_negative_dom_attr,
-            'sum_positive_dom_attr': self.sum_positive_dom_attr,
+            'sum_negative_red': self.sum_negative_sensitive_attr,
+            'sum_positive_red': self.sum_positive_sensitive_attr,
+            'sum_negative_blue': self.sum_negative_dom_attr,
+            'sum_positive_blue': self.sum_positive_dom_attr,
         }
 
         if self.include_pred_stats:
             statistics.update({
                 'sum_pred_positive': self.sum_pred_positive,
                 'sum_pred_negative': self.sum_pred_negative,
-                'sum_sensitive_attr_predicted_positive': self.number_sensitive_attr_predicted_positive,
-                'sum_sensitive_attr_predicted_negative': self.number_sensitive_attr_predicted_negative,
-                'sum_dom_attr_predicted_positive': self.number_dom_attr_predicted_positive,
-                'sum_dom_attr_predicted_negative': self.number_dom_attr_predicted_negative,
-                'sensitive_attr_ppv': self.sen_attr_ppv,
-                'dom_attr_ppv': self.dom_attr_ppv,
+                'sum_red_predicted_positive': self.number_sensitive_attr_predicted_positive,
+                'sum_red_predicted_negative': self.number_sensitive_attr_predicted_negative,
+                'sum_blue_predicted_positive': self.number_dom_attr_predicted_positive,
+                'sum_blue_predicted_negative': self.number_dom_attr_predicted_negative,
+                'red_ppv': self.sen_attr_ppv,
+                'blue_ppv': self.dom_attr_ppv,
             })
         if self.set_name is not None:
             statistics.update({'name': self.set_name})
 
         return statistics
+    def get_test_statistics_df(self):
+        statistics = {
+            'sen_attr_positive_ratio': self.sen_attr_positive_ratio,
+            'dom_attr_positive_ratio': self.dom_attr_positive_ratio,
+            'difference': self.dom_attr_positive_ratio - self.sen_attr_positive_ratio,
+            'sen_attr_ppv': self.sen_attr_ppv,
+            'dom_attr_ppv': self.dom_attr_ppv,
+            'accuracy': self.get_accuracy()
+        }
+        return statistics
+
 
     def get_true_positve(self, confusion_matrix):
         tp = confusion_matrix[1, 1]

@@ -24,6 +24,8 @@ class BasicConfig:
     distance: str
     split_data: SplitData
     split_percent: float
+    basic_split: bool
+    random_train_point: bool
     feature_selection: bool
     exclude_sensitive_attribute: bool
     focus_metric: str

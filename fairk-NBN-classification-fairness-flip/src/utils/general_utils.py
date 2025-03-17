@@ -258,7 +258,8 @@ class TrainerKey:
 
 
 def update_results_dict(number_sensitive_attr_predicted_positive=None, number_sensitive_attr_predicted_negative=None,
-                        number_dom_attr_predicted_positive=None, number_sensitive_attributes_flipped=None ,number_flipped=None,sum_sa_indices_flipped=None,sum_indices_flipped=None, iteration=None):
+                        number_dom_attr_predicted_positive=None, number_sensitive_attributes_flipped=None, number_flipped=None, sum_sa_indices_flipped=None, sum_indices_flipped=None, iteration=None,
+                        rpr=None,bpr=None,diff=None):
     """
        Creates and returns a dictionary containing evaluation results.
 
@@ -283,6 +284,9 @@ def update_results_dict(number_sensitive_attr_predicted_positive=None, number_se
     eval_results['number_flipped'] = number_flipped
     eval_results['sum_sa_indices_flipped'] = sum_sa_indices_flipped
     eval_results['sum_indices_flipped'] = sum_indices_flipped
+    eval_results['rpr'] = rpr
+    eval_results['bpr'] = bpr
+    eval_results['obj_difference'] = diff
     eval_results['train_val_flipped'] = iteration
     return eval_results
 
@@ -300,14 +304,18 @@ def rename_columns_(df,path):
         """
     df =df.copy()
     rename_dict = {
-        'number_sensitive_attr_predicted_positive': 'Number of sensitive attributes classified positive',
-        'number_sensitive_attr_predicted_negative': 'Number of sensitive attributes classified negative',
-        'number_dom_attr_predicted_positive': 'Number of dominant attributes classified positive',
-        'number_sensitive_attributes_flipped': 'Number of sensitive attributes flipped',
-        'number_flipped':'Number of validation point flipped',
-        'sum_sa_indices_flipped': 'Total number of sensitive attributes flipped',
-        'sum_indices_flipped': 'Total number of validation points flipped',
-        'train_val_flipped':'Total number of train neighbors flipped',
+        'number_sensitive_attr_predicted_positive': 'Red Predicted Positive',
+        'number_sensitive_attr_predicted_negative': 'Red Predicted Negative',
+        'number_dom_attr_predicted_positive': 'Blue Predicted Positive',
+        'number_sensitive_attributes_flipped': 'Red Flipped',
+        'number_flipped':'Total Flipped',
+        'sum_sa_indices_flipped': 'Sum of Red Flipped',
+        'sum_indices_flipped': 'Sum Flipped',
+        'train_val_flipped':'Sum of Train Points Flipped',
+        'rpr':'Red Positive Rate',
+        'bpr':'Blue Positive Rate',
+        'obj_difference':'RPR - BPR' ,
+
 
     }
     df = df.rename(columns=rename_dict)
@@ -331,6 +339,25 @@ def check_data_schema(df,class_attribute,sensitive_attribute ):
     })
 
     schema.validate(df)
+
+
+def export_test_statistics(before_stats, after_stats, filename=None):
+    """
+    Compare two sets of test statistics and export them as a CSV file.
+
+    :param before_stats: Dictionary containing statistics before changes
+    :param after_stats: Dictionary containing statistics after changes
+    :param filename: Name of the CSV file to save
+    """
+    data = []
+    for key in before_stats:
+        data.append(["Before", key, before_stats[key]])
+        data.append(["After", key, after_stats[key]])
+
+    df = pd.DataFrame(data, columns=["State", "Metric", "Value"])
+    if filename is None:
+        return df
+    df.to_csv(filename, index=False)
 
 
 
