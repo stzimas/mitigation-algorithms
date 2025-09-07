@@ -65,3 +65,5 @@ python main_deep.py
 | DeepGroup         | ✅       | ❌       | Loss trade-off between modularity and group modularity                |
 | DeepDiversity     | ✅       | ❌       | Loss trade-off between modularity and diversity                       |
 | DeepFairness      | ❌       | ✅       | Penalizes modularity imbalance between groups |
+
+<img width="191" height="20" alt="image" src="https://github.com/user-attachments/assets/a1786e79-32f9-4a8e-99e1-986cf54901cc" />
