@@ -31,7 +31,7 @@ The algorithm iteratively moves points according to the resultant force until co
 ## Usage
 
 ```python
-result = f_frbc_clustering(
+result = f_pfc(
     points=X,
     attributes=attributes,
     lamda=0.5,
