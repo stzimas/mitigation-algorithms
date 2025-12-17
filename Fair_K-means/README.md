@@ -1,124 +1,45 @@
-# Fair K-Means++ (Force-Based Assignment)
+# Fair K-Means++
 
-This repository implements **Fair K-Means++**, a fairness-aware extension of the classical K-Means algorithm, inspired by a **physics-based force formulation**.
+This repository implements **Fair K-Means++**, a fairness-aware extension of the classic K-Means clustering algorithm.
 
-## Overview
-  
-Standard K-Means clusters data solely based on geometric proximity, ignoring sensitive attributes. This may lead to highly imbalanced clusters.
-Fair K-Means++ introduces **fairness-aware forces** that guide point-to-cluster assignments toward balanced representations of a binary sensitive attribute (e.g., gender, race).
-
-The algorithm preserves the centroid-based structure of K-Means while modifying the assignment rule.
+The method modifies the standard assignment step of K-Means in order to produce **more balanced clusters with respect to a binary sensitive attribute** (e.g., gender, race), while preserving good clustering quality.
 
 ---
 
-## Standard K-Means Objective
+## Motivation
 
-Given data points ( X = {x_1,\dots,x_n} \subset \mathbb{R}^d ), K-Means minimizes:
-[
-\min_{C} \sum_{j=1}^{k} \sum_{x_i \in C_j} |x_i - \mu_j|_2^2
-]
+Standard K-Means clusters points based only on distance.
+As a result, clusters may become highly imbalanced with respect to sensitive attributes.
 
-Assignments are traditionally made by nearest centroid.
+**Fair K-Means++** addresses this issue by introducing a **fairness-aware force** that influences point assignments, encouraging clusters to move toward balanced compositions.
 
 ---
 
-## Fairness Definition
+## Key Idea
 
-Each point has a **binary sensitive attribute** (red / blue).
+Each point is influenced by:
 
-For cluster ( C_j ):
+1. **Geometric attraction** to nearby centroids (as in standard K-Means)
+2. **Fairness-aware interaction** based on the imbalance of each cluster
 
-* ( C_j^r ): red points
-* ( C_j^b ): blue points
-
-Cluster balance is defined as:
-[
-\text{bal}(C_j) = \min\left(\frac{|C_j^r|}{|C_j^b|}, \frac{|C_j^b|}{|C_j^r|}\right) \in [0,1]
-]
-
-Cluster imbalance:
-[
-\text{imb}(C_j) = 1 - \text{bal}(C_j)
-]
+These two effects are combined using a single parameter ( \lambda ), which controls the trade-off between clustering quality and fairness.
 
 ---
 
-## Physics-Inspired Interpretation
+## How It Works
 
-We reinterpret cluster assignment as a **force maximization problem**.
+* Each data point has a binary sensitive attribute (e.g., red / blue)
+* Each cluster has imbalance based on balance metric
+* Clusters with strong imbalance exert a corrective influence
+* Points are assigned to the cluster with the strongest combined influence
+* Centroids are updated as usual
+* The process repeats until convergence
 
-### Geometric Force
-
-Standard K-Means assignment:
-[
-\arg\min_j |x_i - \mu_j|^2
-\quad \Longleftrightarrow \quad
-\arg\max_j \frac{1}{|x_i - \mu_j|}
-]
-
-### Fairness via Charges
-
-* Each point is assigned a charge:
-
-  * red → ( q_x = +1 )
-  * blue → ( q_x = -1 )
-* Each centroid receives a charge:
-  [
-  q_{\mu_j} = \text{imb}(C_j) \cdot \text{sign}(\text{majority color})
-  ]
+When ( \lambda = 0 ), the algorithm behaves exactly like standard K-Means.
 
 ---
 
-## Combined Force
-
-The total force exerted by centroid ( \mu_j ) on point ( x_i ) is:
-[
-F(x_i, \mu_j)
-=============
-
-\Big((1-\lambda) - \lambda q_x q_{\mu_j}\Big)
-\cdot
-\frac{1}{|x_i - \mu_j|}
-]
-
-Each point is assigned to the centroid that **maximizes** this force:
-[
-\ell_i = \arg\max_j F(x_i, \mu_j)
-]
-
-* ( \lambda = 0 ): standard K-Means
-* Larger ( \lambda ): stronger fairness influence
-
-To ensure non-negative forces:
-[
-0 \le \lambda \le 0.5
-]
-
----
-
-## Algorithm
-
-1. Initialize centroids (random or K-Means++).
-2. Assign each point by maximizing total force.
-3. Update centroids as cluster means.
-4. Recompute imbalance and charges.
-5. Repeat until convergence.
-
-Multiple runs are supported to reduce sensitivity to initialization.
-
----
-
-## Features
-
-* K-Means++ initialization
-* Force-based fair assignment
-* Explicit fairness–geometry trade-off
-* Multiple initialization strategies
-* SSE and fairness evaluation metrics
-
----
-
-## Usage
+## Usage Example
 
 ```python
 model = KMeansBalanced_pp(
@@ -126,9 +47,19 @@ model = KMeansBalanced_pp(
     lambda_=0.3,
     init_mode="kmeans++"
 )
-model.fit(X, attributes)
+model.fit(X, sensitive_attributes)
 labels = model.labels_
 ```
+
+---
+
+## Notes
+
+* Designed for binary sensitive attributes
+* Keeps the simplicity and scalability of K-Means
+* Introduces fairness without hard constraints
+* Easy to tune through a single parameter
+
 
 ---
 
@@ -137,8 +68,3 @@ labels = model.labels_
 * numpy
 * scikit-learn
 
----
-
-## Notes
-
-This method bridges centroid-based clustering with fairness constraints using a simple, interpretable force-based formulation.
