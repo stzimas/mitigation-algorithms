@@ -1,6 +1,6 @@
-# Fair K-Means++
+# Fair K-Means
 
-This repository implements **Fair K-Means++**, a fairness-aware extension of the classic K-Means clustering algorithm.
+This repository implements **Fair K-Means**, a fairness-aware extension of the classic K-Means clustering algorithm.
 
 The method modifies the standard assignment step of K-Means in order to produce **more balanced clusters with respect to a binary sensitive attribute** (e.g., gender, race), while preserving good clustering quality.
 
@@ -11,7 +11,7 @@ The method modifies the standard assignment step of K-Means in order to produce 
 Standard K-Means clusters points based only on distance.
 As a result, clusters may become highly imbalanced with respect to sensitive attributes.
 
-**Fair K-Means++** addresses this issue by introducing a **fairness-aware force** that influences point assignments, encouraging clusters to move toward balanced compositions.
+**Fair K-Means** addresses this issue by introducing a **fairness-aware force** that influences point assignments, encouraging clusters to move toward balanced compositions.
 
 ---
 
@@ -20,7 +20,7 @@ As a result, clusters may become highly imbalanced with respect to sensitive att
 Each point is influenced by:
 
 1. **Geometric attraction** to nearby centroids (as in standard K-Means)
-2. **Fairness-aware interaction** based on the imbalance of each cluster
+2. **Fairness-aware interaction** based on the imbalance of each cluster (imbalance = 1- balance(c))
 
 These two effects are combined using a single parameter λ, which controls the trade-off between clustering quality and fairness.
 
@@ -42,10 +42,10 @@ When ( λ = 0 ), the algorithm behaves exactly like standard K-Means.
 ## Usage Example
 
 ```python
-model = KMeansBalanced_pp(
+model = KMeansBalanced(
     n_clusters=3,
     lambda_=0.3,
-    init_mode="kmeans++"
+    init_mode="kmeans"
 )
 model.fit(X, sensitive_attributes)
 labels = model.labels_
